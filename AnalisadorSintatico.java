@@ -18,9 +18,9 @@ public class AnalisadorSintatico {
 
     private void erro(String msg) {
         if (tokenAtual != null) {
-            throw new RuntimeException("Erro sintático na linha " + tokenAtual.getLinha() + ": " + msg);
+            throw new RuntimeException("Erro sintatico na linha " + tokenAtual.getLinha() + ": " + msg);
         } else {
-            throw new RuntimeException("Erro sintático: " + msg + " (Fim inesperado do arquivo)");
+            throw new RuntimeException("Erro sintatico: " + msg + " (Fim inesperado do arquivo)");
         }
     }
 
@@ -35,15 +35,15 @@ public class AnalisadorSintatico {
                     analisaBloco();
                     if (tokenAtual.getSimbolo() == TokenSimbolo.sponto) {
                         proximoToken();
-                        System.out.println("Programa válido!");
+                        System.out.println("Programa valido!");
                     } else {
                         erro("Ponto final esperado");
                     }
                 } else {
-                    erro("Ponto e vírgula esperado após identificador");
+                    erro("Ponto e virgula esperado apos identificador");
                 }
             } else {
-                erro("Identificador esperado após 'programa'");
+                erro("Identificador esperado apos 'programa'");
             }
         } else {
             erro("Palavra-chave 'programa' esperada");
@@ -70,7 +70,7 @@ public class AnalisadorSintatico {
                 if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
                     proximoToken();
                 } else {
-                    erro("Ponto e vírgula esperado após declaração de variáveis");
+                    erro("Ponto e virgula esperado apos declaracao de variaveis");
                 }
             }
         }
@@ -80,23 +80,26 @@ public class AnalisadorSintatico {
         // Analisa o primeiro identificador
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
             if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "variavel")) {
-                erro("Identificador '" + tokenAtual.getLexema() + "' já declarado");
+                erro("Identificador '" + tokenAtual.getLexema() + "' ja declarado");
             }
             proximoToken();
         } else {
-            erro("Identificador esperado na declaração de variáveis");
+            erro("Identificador esperado na declaracao de variaveis");
         }
         
         // Analisa identificadores subsequentes separados por vírgula
         while (tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
             proximoToken();
+            if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
+                erro("Virgula a mais na declaracao de variaveis");
+            }
             if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
                 if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "variavel")) {
                     erro("Identificador '" + tokenAtual.getLexema() + "' já declarado");
                 }
                 proximoToken();
             } else {
-                erro("Identificador esperado após vírgula na declaração de variáveis");
+                erro("Identificador esperado apos virgula na declaracao de variaveis");
             }
         }
 
@@ -105,7 +108,7 @@ public class AnalisadorSintatico {
             proximoToken();
             analisaTipo();
         } else {
-            erro("Dois pontos esperado em declaração de variáveis");
+            erro("Dois pontos esperado em declaracao de variaveis");
         }
     }
 
@@ -124,10 +127,14 @@ private void analisaComandos() throws IOException {
         analisaComandoSimples();
         while (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
             proximoToken();
+            if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula || tokenAtual.getSimbolo() == TokenSimbolo.ssenao) {
+                erro("Ponto e virgula excedente");
+            }
             if (tokenAtual.getSimbolo() != TokenSimbolo.sfim) {
                 analisaComandoSimples();
             }
         }
+
         if (tokenAtual.getSimbolo() == TokenSimbolo.sfim) {
             proximoToken();
         } else {
@@ -152,23 +159,23 @@ private void analisaComandos() throws IOException {
     } else if (tokenAtual.getSimbolo() == TokenSimbolo.sinicio) {
         analisaComandos(); // <--- Este é o ponto chave para aninhamento
     } else {
-                erro("Comando inválido");
+                erro("Comando invalido");
         }
     }
 
 private void analisaAtribChProcedimento() throws IOException {
     if (tabela.buscar(tokenAtual.getLexema()) == null) {
-        erro("Identificador '" + tokenAtual.getLexema() + "' não declarado");
+        erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
     }
     proximoToken();
     if (tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
         proximoToken();
         analisaExpressao(); // Chama a análise da expressão para a atribuição
     } else {
-        // Se não for ':=', a atribuição falha.
+        // Se nao for ':=', a atribuição falha.
         // O seu código já lança o erro, mas de forma genérica.
         // Você pode ser mais específico:
-        erro("Símbolo de atribuição ':=', ou chamada de procedimento, esperado");
+        erro("Simbolo de atribuicao ':=', ou chamada de procedimento, esperado");
     }
 }
 
@@ -182,16 +189,16 @@ private void analisaAtribChProcedimento() throws IOException {
                     if (tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
                         proximoToken();
                     } else {
-                        erro("Parêntese fechando esperado");
+                        erro("Parentese fechando esperado");
                     }
                 } else {
-                    erro("Identificador '" + tokenAtual.getLexema() + "' não declarado");
+                    erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
                 }
             } else {
-                erro("Identificador esperado na instrução 'leia'");
+                erro("Identificador esperado na instrucao 'leia'");
             }
         } else {
-            erro("Parêntese abrindo esperado na instrução 'leia'");
+            erro("Parentese abrindo esperado na instrucao 'leia'");
         }
     }
 
@@ -205,16 +212,16 @@ private void analisaAtribChProcedimento() throws IOException {
                     if (tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
                         proximoToken();
                     } else {
-                        erro("Parêntese fechando esperado");
+                        erro("Parentese fechando esperado");
                     }
                 } else {
-                    erro("Identificador '" + tokenAtual.getLexema() + "' não declarado");
+                    erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
                 }
             } else {
-                erro("Identificador esperado na instrução 'escreva'");
+                erro("Identificador esperado na instrucao 'escreva'");
             }
         } else {
-            erro("Parêntese abrindo esperado na instrução 'escreva'");
+            erro("Parentese abrindo esperado na instrucao 'escreva'");
         }
     }
 
@@ -225,7 +232,7 @@ private void analisaAtribChProcedimento() throws IOException {
             proximoToken();
             analisaComandoSimples();
         } else {
-            erro("'faca' esperado na instrução 'enquanto'");
+            erro("'faca' esperado na instrucao 'enquanto'");
         }
     }
 
@@ -240,7 +247,7 @@ private void analisaAtribChProcedimento() throws IOException {
                 analisaComandoSimples();
             }
         } else {
-            erro("'entao' esperado na instrução 'se'");
+            erro("'entao' esperado na instrucao 'se'");
         }
     }
 
@@ -254,7 +261,7 @@ private void analisaAtribChProcedimento() throws IOException {
             if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
                 proximoToken();
             } else {
-                erro("Ponto e vírgula esperado após declaração de sub-rotina");
+                erro("Ponto e virgula esperado apos declaracao de sub-rotina");
             }
         }
     }
@@ -263,17 +270,17 @@ private void analisaAtribChProcedimento() throws IOException {
         proximoToken();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
             if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "procedimento")) {
-                erro("Procedimento '" + tokenAtual.getLexema() + "' já declarado");
+                erro("Procedimento '" + tokenAtual.getLexema() + "' ja declarado");
             }
             proximoToken();
             if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
                 proximoToken();
                 analisaBloco();
             } else {
-                erro("Ponto e vírgula esperado após identificador de procedimento");
+                erro("Ponto e virgula esperado apos identificador de procedimento");
             }
         } else {
-            erro("Identificador esperado após 'procedimento'");
+            erro("Identificador esperado apos 'procedimento'");
         }
     }
 
@@ -281,7 +288,7 @@ private void analisaAtribChProcedimento() throws IOException {
         proximoToken();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
             if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "funcao")) {
-                erro("Função '" + tokenAtual.getLexema() + "' já declarada");
+                erro("Funcao '" + tokenAtual.getLexema() + "' ja declarada");
             }
             proximoToken();
             if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
@@ -292,16 +299,16 @@ private void analisaAtribChProcedimento() throws IOException {
                         proximoToken();
                         analisaBloco();
                     } else {
-                        erro("Ponto e vírgula esperado após tipo de função");
+                        erro("Ponto e virgula esperado apos tipo de funcao");
                     }
                 } else {
-                    erro("Tipo esperado (inteiro ou booleano) após ':' na função");
+                    erro("Tipo esperado (inteiro ou booleano) apos ':' na função");
                 }
             } else {
-                erro("Dois pontos esperado após identificador de função");
+                erro("Dois pontos esperado apos identificador de função");
             }
         } else {
-            erro("Identificador esperado após 'funcao'");
+            erro("Identificador esperado apos 'funcao'");
         }
     }
 
@@ -341,7 +348,7 @@ private void analisaAtribChProcedimento() throws IOException {
             if (tabela.buscar(tokenAtual.getLexema()) != null) {
                 proximoToken();
             } else {
-                erro("Identificador '" + tokenAtual.getLexema() + "' não declarado");
+                erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
             }
         } else if (tokenAtual.getSimbolo() == TokenSimbolo.snumero) {
             proximoToken();
@@ -354,12 +361,12 @@ private void analisaAtribChProcedimento() throws IOException {
             if (tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
                 proximoToken();
             } else {
-                erro("Parêntese fechando esperado");
+                erro("Parentese fechando esperado");
             }
         } else if (tokenAtual.getSimbolo() == TokenSimbolo.sverdadeiro || tokenAtual.getSimbolo() == TokenSimbolo.sfalso) {
             proximoToken();
         } else {
-            erro("Fator inválido");
+            erro("Fator invalido");
         }
     }
 }
