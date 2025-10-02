@@ -12,7 +12,7 @@ public class Main {
             TabelaSimbolos tabela = new TabelaSimbolos();
             AnalisadorSintatico parser = new AnalisadorSintatico(lexico, tabela);
             parser.analisaPrograma();
-            System.out.println("\nAnálise concluída. Tabela de Símbolos:");
+            System.out.println("\nAnalise concluida. Tabela de Simbolos:");
             tabela.imprimir();
             lexico.fechar();
         } catch (IOException e) {

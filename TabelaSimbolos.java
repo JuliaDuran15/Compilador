@@ -107,7 +107,7 @@ public class TabelaSimbolos {
 
     // Imprime a tabela de símbolos
     public void imprimir() {
-        System.out.println("=== Tabela de Símbolos ===");
+        System.out.println("=== Tabela de Simbolos ===");
         for (Simbolo s : tabela) {
             System.out.println(s);
         }

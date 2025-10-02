@@ -164,20 +164,34 @@ private void analisaComandos() throws IOException {
     }
 
 private void analisaAtribChProcedimento() throws IOException {
-    if (tabela.buscar(tokenAtual.getLexema()) == null) {
-        erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
+    if (this.tabela.buscar(this.tokenAtual.getLexema()) == null) {
+        this.erro("Identificador '" + this.tokenAtual.getLexema() + "' nao declarado");
     }
-    proximoToken();
-    if (tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
-        proximoToken();
-        analisaExpressao(); // Chama a análise da expressão para a atribuição
+
+    this.proximoToken();
+    if (this.tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
+        // caso de atribuição
+        this.proximoToken();
+        this.analisaExpressao();
+    } else if (this.tokenAtual.getSimbolo() == TokenSimbolo.sabre_parenteses) {
+        // chamada de procedimento com parâmetros
+        this.proximoToken();
+        this.analisaExpressao();
+        while (this.tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
+            this.proximoToken();
+            this.analisaExpressao();
+        }
+        if (this.tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
+            this.proximoToken();
+        } else {
+            this.erro("Parentese fechando esperado na chamada de procedimento");
+        }
     } else {
-        // Se nao for ':=', a atribuição falha.
-        // O seu código já lança o erro, mas de forma genérica.
-        // Você pode ser mais específico:
-        erro("Simbolo de atribuicao ':=', ou chamada de procedimento, esperado");
+        // chamada de procedimento simples (sem parâmetros)
+        // não precisa fazer nada além de aceitar e retornar
     }
 }
+
 
     private void analisaLeia() throws IOException {
         proximoToken();
