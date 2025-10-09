@@ -91,12 +91,6 @@ public class TabelaSimbolos {
 
     // Sai do escopo atual, removendo símbolos do nível
     public void sairEscopo() {
-        for (int i = tabela.size() - 1; i >= 0; i--) {
-            Simbolo s = tabela.get(i);
-            if (s.getEscopo() == nivelAtual) {
-                tabela.remove(i);
-            }
-        }
         nivelAtual--;
     }
 
