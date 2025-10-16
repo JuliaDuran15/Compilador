@@ -1,6 +1,5 @@
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Stack;
 
 class Simbolo {
     private String nome;
@@ -34,33 +33,33 @@ class Simbolo {
 
 public class TabelaSimbolos {
     private List<Simbolo> tabela;
-    private Stack<String> identificadoresPendentes;
     private int enderecoAtual;
     private int nivelAtual;
 
     public TabelaSimbolos() {
         tabela = new ArrayList<>();
-        identificadoresPendentes = new Stack<>();
         enderecoAtual = 0;
         nivelAtual = 0;
     }
 
-    // Insere um símbolo na tabela
+    // Insere um símbolo na tabela; tipo precisa ser o tipo concreto (ex: "inteiro", "booleano", "procedimento", "programa")
     public boolean inserir(String nome, int escopo, String tipo) {
-        // Verifica se já existe símbolo com mesmo nome no mesmo escopo
-        for (int i = tabela.size() - 1; i >= 0; i--) {
-            Simbolo s = tabela.get(i);
-            if (s.getNome().equals(nome) && s.getEscopo() == escopo) {
-                return false; // já existe
-            }
+    // Debug
+    System.out.println("Tentando inserir: " + nome + " no escopo " + escopo + " tipo: " + tipo);
+    
+    // Verifica se já existe símbolo com mesmo nome no mesmo escopo
+    for (int i = tabela.size() - 1; i >= 0; i--) {
+        Simbolo s = tabela.get(i);
+        if (s.getNome().equals(nome) && s.getEscopo() == escopo) {
+            System.out.println("FALHA: " + nome + " já existe no escopo " + escopo);
+            return false; // já existe no mesmo escopo
         }
-        Simbolo simbolo = new Simbolo(nome, escopo, tipo, enderecoAtual++);
-        tabela.add(simbolo);
-        if (tipo.equals("variavel")) {
-            identificadoresPendentes.push(nome);
-        }
-        return true;
     }
+    Simbolo simbolo = new Simbolo(nome, escopo, tipo, enderecoAtual++);
+    tabela.add(simbolo);
+    System.out.println("SUCESSO: " + nome + " inserido no escopo " + escopo);
+    return true;
+}
 
     // Busca um símbolo pelo nome (pega o mais recente em escopos internos)
     public Simbolo buscar(String nome) {
@@ -73,17 +72,6 @@ public class TabelaSimbolos {
         return null;
     }
 
-    // Coloca tipo nas variáveis pendentes
-    public void colocarTipoNasVariaveis(String tipo) {
-        while (!identificadoresPendentes.isEmpty()) {
-            String nome = identificadoresPendentes.pop();
-            Simbolo s = buscar(nome);
-            if (s != null && s.getTipo().equals("variavel")) {
-                s.setTipo(tipo);
-            }
-        }
-    }
-
     // Entra em novo escopo
     public void entrarEscopo() {
         nivelAtual++;
@@ -91,7 +79,9 @@ public class TabelaSimbolos {
 
     // Sai do escopo atual, removendo símbolos do nível
     public void sairEscopo() {
+        // Remove símbolos do escopo que está sendo encerrado (nivelAtual)
         nivelAtual--;
+        if (nivelAtual < 0) nivelAtual = 0;
     }
 
     // Retorna o nível atual do escopo

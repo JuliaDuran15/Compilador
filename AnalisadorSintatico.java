@@ -1,10 +1,11 @@
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AnalisadorSintatico {
     private Token tokenAtual;
     private TabelaSimbolos tabela;
     private AnalisadorLexico lexico;
-    private int nivelAtual = 0;
 
     public AnalisadorSintatico(AnalisadorLexico lexico, TabelaSimbolos tabela) throws IOException {
         this.lexico = lexico;
@@ -28,7 +29,7 @@ public class AnalisadorSintatico {
         if (tokenAtual.getSimbolo() == TokenSimbolo.sprograma) {
             proximoToken();
             if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-                tabela.inserir(tokenAtual.getLexema(), nivelAtual, "programa");
+                tabela.inserir(tokenAtual.getLexema(), tabela.getNivelAtual(), "programa");
                 proximoToken();
                 if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
                     proximoToken();
@@ -51,15 +52,11 @@ public class AnalisadorSintatico {
     }
 
     private void analisaBloco() throws IOException {
-        nivelAtual++;
         tabela.entrarEscopo();
-
         analisaEtVariaveis();
         analisaSubrotinas();
         analisaComandos();
-
         tabela.sairEscopo();
-        nivelAtual--;
     }
 
     private void analisaEtVariaveis() throws IOException {
@@ -76,122 +73,122 @@ public class AnalisadorSintatico {
         }
     }
 
-    private void analisaVariaveis() throws IOException {
-        // Analisa o primeiro identificador
+    private String analisaTipo() throws IOException {
+    if (tokenAtual.getSimbolo() == TokenSimbolo.sinteiro || tokenAtual.getSimbolo() == TokenSimbolo.sbooleano) {
+        String tipo = tokenAtual.getLexema();
+        proximoToken();
+        return tipo;
+    } else {
+        erro("Tipo esperado (inteiro ou booleano)");
+        return null;
+    }
+}
+
+private void analisaVariaveis() throws IOException {
+    List<String> ids = new ArrayList<>();
+
+    // Coleta identificadores
+    if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
+        ids.add(tokenAtual.getLexema());
+        proximoToken();
+    } else {
+        erro("Identificador esperado na declaracao de variaveis");
+    }
+
+    while (tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
+        proximoToken();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-            if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "variavel")) {
-                erro("Identificador '" + tokenAtual.getLexema() + "' ja declarado");
-            }
+            ids.add(tokenAtual.getLexema());
             proximoToken();
         } else {
-            erro("Identificador esperado na declaracao de variaveis");
+            erro("Identificador esperado apos virgula na declaracao de variaveis");
         }
+    }
+
+    // Dois pontos
+    if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
+        proximoToken();
         
-        // Analisa identificadores subsequentes separados por vírgula
-        while (tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
-            proximoToken();
-            if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
-                erro("Virgula a mais na declaracao de variaveis");
+        // Usa analisaTipo() que retorna o tipo
+        String tipo = analisaTipo();
+        
+        // Insere todos os identificadores com o tipo
+        for (String id : ids) {
+            if (!tabela.inserir(id, tabela.getNivelAtual(), tipo)) {
+                erro("Identificador '" + id + "' ja declarado no mesmo escopo");
             }
-            if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-                if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "variavel")) {
-                    erro("Identificador '" + tokenAtual.getLexema() + "' já declarado");
+        }
+        // Não precisa de proximoToken() aqui porque analisaTipo() já consumiu
+    } else {
+        erro("Dois pontos esperado em declaracao de variaveis");
+    }
+}
+
+    private void analisaComandos() throws IOException {
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sinicio) {
+            proximoToken();
+            analisaComandoSimples();
+            while (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
+                proximoToken();
+                if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula || tokenAtual.getSimbolo() == TokenSimbolo.ssenao) {
+                    erro("Ponto e virgula excedente");
                 }
+                if (tokenAtual.getSimbolo() != TokenSimbolo.sfim) {
+                    analisaComandoSimples();
+                }
+            }
+
+            if (tokenAtual.getSimbolo() == TokenSimbolo.sfim) {
                 proximoToken();
             } else {
-                erro("Identificador esperado apos virgula na declaracao de variaveis");
+                erro("'fim' esperado para finalizar o bloco de comandos");
             }
-        }
-
-        // Espera os dois pontos e o tipo
-        if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
-            proximoToken();
-            analisaTipo();
         } else {
-            erro("Dois pontos esperado em declaracao de variaveis");
+            erro("'inicio' esperado no bloco de comandos");
         }
     }
-
-    private void analisaTipo() throws IOException {
-        if (tokenAtual.getSimbolo() == TokenSimbolo.sinteiro || tokenAtual.getSimbolo() == TokenSimbolo.sbooleano) {
-            tabela.colocarTipoNasVariaveis(tokenAtual.getLexema());
-            proximoToken();
-        } else {
-            erro("Tipo esperado (inteiro ou booleano)");
-        }
-    }
-
-private void analisaComandos() throws IOException {
-    if (tokenAtual.getSimbolo() == TokenSimbolo.sinicio) {
-        proximoToken();
-        analisaComandoSimples();
-        while (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula) {
-            proximoToken();
-            if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula || tokenAtual.getSimbolo() == TokenSimbolo.ssenao) {
-                erro("Ponto e virgula excedente");
-            }
-            if (tokenAtual.getSimbolo() != TokenSimbolo.sfim) {
-                analisaComandoSimples();
-            }
-        }
-
-        if (tokenAtual.getSimbolo() == TokenSimbolo.sfim) {
-            proximoToken();
-        } else {
-            erro("'fim' esperado para finalizar o bloco de comandos");
-        }
-    } else {
-        erro("'inicio' esperado no bloco de comandos");
-    }
-}
 
     private void analisaComandoSimples() throws IOException {
-    if (tokenAtual.getSimbolo() == TokenSimbolo.sleia) {
-        analisaLeia();
-    } else if (tokenAtual.getSimbolo() == TokenSimbolo.sescreva) {
-        analisaEscreva();
-    } else if (tokenAtual.getSimbolo() == TokenSimbolo.sse) {
-        analisaSe();
-    } else if (tokenAtual.getSimbolo() == TokenSimbolo.senquanto) {
-        analisaEnquanto();
-    } else if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-        analisaAtribChProcedimento();
-    } else if (tokenAtual.getSimbolo() == TokenSimbolo.sinicio) {
-        analisaComandos(); // <--- Este é o ponto chave para aninhamento
-    } else {
-                erro("Comando invalido");
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sleia) {
+            analisaLeia();
+        } else if (tokenAtual.getSimbolo() == TokenSimbolo.sescreva) {
+            analisaEscreva();
+        } else if (tokenAtual.getSimbolo() == TokenSimbolo.sse) {
+            analisaSe();
+        } else if (tokenAtual.getSimbolo() == TokenSimbolo.senquanto) {
+            analisaEnquanto();
+        } else if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
+            analisaAtribChProcedimento();
+        } else if (tokenAtual.getSimbolo() == TokenSimbolo.sinicio) {
+            analisaComandos();
+        } else {
+            erro("Comando invalido");
         }
     }
 
-private void analisaAtribChProcedimento() throws IOException {
-    if (this.tabela.buscar(this.tokenAtual.getLexema()) == null) {
-        this.erro("Identificador '" + this.tokenAtual.getLexema() + "' nao declarado");
-    }
+    private void analisaAtribChProcedimento() throws IOException {
+        if (this.tabela.buscar(this.tokenAtual.getLexema()) == null) {
+            this.erro("Identificador '" + this.tokenAtual.getLexema() + "' nao declarado");
+        }
 
-    this.proximoToken();
-    if (this.tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
-        // caso de atribuição
         this.proximoToken();
-        this.analisaExpressao();
-    } else if (this.tokenAtual.getSimbolo() == TokenSimbolo.sabre_parenteses) {
-        // chamada de procedimento com parâmetros
-        this.proximoToken();
-        this.analisaExpressao();
-        while (this.tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
+        if (this.tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
             this.proximoToken();
             this.analisaExpressao();
-        }
-        if (this.tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
+        } else if (this.tokenAtual.getSimbolo() == TokenSimbolo.sabre_parenteses) {
             this.proximoToken();
-        } else {
-            this.erro("Parentese fechando esperado na chamada de procedimento");
+            this.analisaExpressao();
+            while (this.tokenAtual.getSimbolo() == TokenSimbolo.svirgula) {
+                this.proximoToken();
+                this.analisaExpressao();
+            }
+            if (this.tokenAtual.getSimbolo() == TokenSimbolo.sfecha_parenteses) {
+                this.proximoToken();
+            } else {
+                this.erro("Parentese fechando esperado na chamada de procedimento");
+            }
         }
-    } else {
-        // chamada de procedimento simples (sem parâmetros)
-        // não precisa fazer nada além de aceitar e retornar
     }
-}
-
 
     private void analisaLeia() throws IOException {
         proximoToken();
@@ -283,7 +280,7 @@ private void analisaAtribChProcedimento() throws IOException {
     private void analisaDeclaracaoProcedimento() throws IOException {
         proximoToken();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-            if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "procedimento")) {
+            if (!tabela.inserir(tokenAtual.getLexema(), tabela.getNivelAtual(), "procedimento")) {
                 erro("Procedimento '" + tokenAtual.getLexema() + "' ja declarado");
             }
             proximoToken();
@@ -301,7 +298,7 @@ private void analisaAtribChProcedimento() throws IOException {
     private void analisaDeclaracaoFuncao() throws IOException {
         proximoToken();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
-            if (!tabela.inserir(tokenAtual.getLexema(), nivelAtual, "funcao")) {
+            if (!tabela.inserir(tokenAtual.getLexema(), tabela.getNivelAtual(), "funcao")) {
                 erro("Funcao '" + tokenAtual.getLexema() + "' ja declarada");
             }
             proximoToken();
