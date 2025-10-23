@@ -96,4 +96,9 @@ public class TabelaSimbolos {
             System.out.println(s);
         }
     }
+
+    public List<Simbolo> getTodos() {
+    return new ArrayList<>(tabela); // retorna uma cópia segura
+}
+
 }
