@@ -42,26 +42,29 @@ public class TabelaSimbolos {
         nivelAtual = 0;
     }
 
-    // Insere um símbolo na tabela; tipo precisa ser o tipo concreto (ex: "inteiro", "booleano", "procedimento", "programa")
+    // ==========================
+    // INSERÇÃO DE SÍMBOLOS
+    // ==========================
     public boolean inserir(String nome, int escopo, String tipo) {
-    // Debug
-    System.out.println("Tentando inserir: " + nome + " no escopo " + escopo + " tipo: " + tipo);
-    
-    // Verifica se já existe símbolo com mesmo nome no mesmo escopo
-    for (int i = tabela.size() - 1; i >= 0; i--) {
-        Simbolo s = tabela.get(i);
-        if (s.getNome().equals(nome) && s.getEscopo() == escopo) {
-            System.out.println("FALHA: " + nome + " já existe no escopo " + escopo);
-            return false; // já existe no mesmo escopo
-        }
-    }
-    Simbolo simbolo = new Simbolo(nome, escopo, tipo, enderecoAtual++);
-    tabela.add(simbolo);
-    System.out.println("SUCESSO: " + nome + " inserido no escopo " + escopo);
-    return true;
-}
+        System.out.println("Tentando inserir: " + nome + " no escopo " + escopo + " tipo: " + tipo);
 
-    // Busca um símbolo pelo nome (pega o mais recente em escopos internos)
+        // Usa buscarNoNivelAtual para evitar redefinições no mesmo escopo
+        if (buscarNoNivelAtual(nome) != null) {
+            System.out.println("FALHA: " + nome + " já existe no escopo " + escopo);
+            return false;
+        }
+
+        Simbolo simbolo = new Simbolo(nome, escopo, tipo, enderecoAtual++);
+        tabela.add(simbolo);
+        System.out.println("SUCESSO: " + nome + " inserido no escopo " + escopo);
+        return true;
+    }
+
+    // ==========================
+    // BUSCAS
+    // ==========================
+
+    // Busca o símbolo mais recente com determinado nome (de escopos internos para externos)
     public Simbolo buscar(String nome) {
         for (int i = tabela.size() - 1; i >= 0; i--) {
             Simbolo s = tabela.get(i);
@@ -72,33 +75,51 @@ public class TabelaSimbolos {
         return null;
     }
 
-    // Entra em novo escopo
-    public void entrarEscopo() {
-        nivelAtual++;
+    // 🔹 Busca um símbolo apenas no escopo atual
+    public Simbolo buscarNoNivelAtual(String nome) {
+        for (int i = tabela.size() - 1; i >= 0; i--) {
+            Simbolo s = tabela.get(i);
+            if (s.getNome().equals(nome) && s.getEscopo() == nivelAtual) {
+                return s; // encontrado no nível atual
+            }
+        }
+        return null; // não encontrado neste nível
     }
 
-    // Sai do escopo atual, removendo símbolos do nível
+    // ==========================
+    // CONTROLE DE ESCOPO
+    // ==========================
+
+    public void entrarEscopo() {
+        nivelAtual++;
+        System.out.println("Entrando no escopo " + nivelAtual);
+    }
+
     public void sairEscopo() {
-        // Remove símbolos do escopo que está sendo encerrado (nivelAtual)
+        System.out.println("Saindo do escopo " + nivelAtual);
+        // Remove símbolos pertencentes ao escopo atual
+        tabela.removeIf(s -> s.getEscopo() == nivelAtual);
         nivelAtual--;
         if (nivelAtual < 0) nivelAtual = 0;
     }
 
-    // Retorna o nível atual do escopo
     public int getNivelAtual() {
         return nivelAtual;
     }
 
-    // Imprime a tabela de símbolos
+    // ==========================
+    // DEPURAÇÃO / UTILITÁRIOS
+    // ==========================
+
     public void imprimir() {
-        System.out.println("=== Tabela de Simbolos ===");
+        System.out.println("\n=== Tabela de Símbolos ===");
         for (Simbolo s : tabela) {
             System.out.println(s);
         }
+        System.out.println("==========================\n");
     }
 
     public List<Simbolo> getTodos() {
-    return new ArrayList<>(tabela); // retorna uma cópia segura
-}
-
+        return new ArrayList<>(tabela); // retorna uma cópia segura
+    }
 }

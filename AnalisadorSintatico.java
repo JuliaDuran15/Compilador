@@ -19,9 +19,9 @@ public class AnalisadorSintatico {
 
     private void erro(String msg) {
         if (tokenAtual != null)
-            throw new RuntimeException("Erro sintatico na linha " + tokenAtual.getLinha() + ": " + msg);
+            throw new RuntimeException("Erro sintatico/semantico na linha " + tokenAtual.getLinha() + ": " + msg);
         else
-            throw new RuntimeException("Erro sintatico: " + msg + " (Fim inesperado do arquivo)");
+            throw new RuntimeException("Erro sintatico/semantico: " + msg + " (Fim inesperado do arquivo)");
     }
 
     // <programa> ::= programa <identificador> ; <bloco> .
@@ -34,7 +34,10 @@ public class AnalisadorSintatico {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
             erro("Identificador esperado apos 'programa'");
 
-        tabela.inserir(tokenAtual.getLexema(), tabela.getNivelAtual(), "programa");
+        String nomePrograma = tokenAtual.getLexema();
+        if (!tabela.inserir(nomePrograma, tabela.getNivelAtual(), "programa"))
+            erro("Nome do programa '" + nomePrograma + "' ja declarado em escopo visivel");
+
         proximoToken();
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
@@ -43,7 +46,6 @@ public class AnalisadorSintatico {
         proximoToken();
         analisaBloco();
 
-        // verificação do ponto final
         if (tokenAtual.getSimbolo() == TokenSimbolo.sponto_virgula)
             erro("Ponto e virgula nao permitido apos 'fim' do programa principal");
 
@@ -55,7 +57,6 @@ public class AnalisadorSintatico {
         }
     }
 
-    // <bloco> ::= [<etapa de declaracao de variaveis>] [<etapa de declaracao de sub-rotinas>] <comandos>
     private void analisaBloco() throws IOException {
         tabela.entrarEscopo();
         analisaEtVariaveis();
@@ -64,7 +65,6 @@ public class AnalisadorSintatico {
         tabela.sairEscopo();
     }
 
-    // <etapa de declaracao de variaveis> ::= var <declaracao de variaveis> ; {<declaracao de variaveis>;}
     private void analisaEtVariaveis() throws IOException {
         if (tokenAtual.getSimbolo() == TokenSimbolo.svar) {
             proximoToken();
@@ -104,8 +104,10 @@ public class AnalisadorSintatico {
         String tipo = analisaTipo();
 
         for (String id : ids) {
-            if (!tabela.inserir(id, tabela.getNivelAtual(), tipo))
+            if (tabela.buscarNoNivelAtual(id) != null)
                 erro("Identificador '" + id + "' ja declarado neste escopo");
+            if (!tabela.inserir(id, tabela.getNivelAtual(), tipo))
+                erro("Falha ao inserir identificador '" + id + "'");
         }
     }
 
@@ -121,7 +123,6 @@ public class AnalisadorSintatico {
         }
     }
 
-    // <etapa de declaracao de sub-rotinas> ::= (<declaracao de procedimento>; | <declaracao de funcao>;){...}
     private void analisaSubrotinas() throws IOException {
         while (tokenAtual.getSimbolo() == TokenSimbolo.sprocedimento || tokenAtual.getSimbolo() == TokenSimbolo.sfuncao) {
             if (tokenAtual.getSimbolo() == TokenSimbolo.sprocedimento)
@@ -140,8 +141,12 @@ public class AnalisadorSintatico {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
             erro("Identificador esperado apos 'procedimento'");
 
-        if (!tabela.inserir(tokenAtual.getLexema(), tabela.getNivelAtual(), "procedimento"))
-            erro("Procedimento '" + tokenAtual.getLexema() + "' ja declarado");
+        String nome = tokenAtual.getLexema();
+
+        if (tabela.buscar(nome) != null)
+            erro("Procedimento '" + nome + "' ja declarado (identificador visivel com mesmo nome)");
+        if (!tabela.inserir(nome, tabela.getNivelAtual(), "procedimento"))
+            erro("Nao foi possivel inserir procedimento '" + nome + "'");
 
         proximoToken();
 
@@ -158,6 +163,10 @@ public class AnalisadorSintatico {
             erro("Identificador esperado apos 'funcao'");
 
         String nome = tokenAtual.getLexema();
+
+        if (tabela.buscar(nome) != null)
+            erro("Funcao '" + nome + "' ja declarada (identificador visivel com mesmo nome)");
+
         proximoToken();
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sdois_pontos)
@@ -167,7 +176,7 @@ public class AnalisadorSintatico {
         String tipo = analisaTipo();
 
         if (!tabela.inserir(nome, tabela.getNivelAtual(), tipo))
-            erro("Funcao '" + nome + "' ja declarada");
+            erro("Nao foi possivel inserir funcao '" + nome + "'");
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
             erro("Ponto e virgula esperado apos tipo da funcao");
@@ -176,7 +185,6 @@ public class AnalisadorSintatico {
         analisaBloco();
     }
 
-    // <comandos> ::= inicio <comando> {; <comando>} [;] fim
     private void analisaComandos() throws IOException {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sinicio)
             erro("'inicio' esperado");
@@ -224,28 +232,42 @@ public class AnalisadorSintatico {
 
     // <atribuição_chprocedimento> ::= <identificador> := <expressao> | <identificador>
     private void analisaAtribOuChamada() throws IOException {
-        Simbolo s = tabela.buscar(tokenAtual.getLexema());
+        String lex = tokenAtual.getLexema();
+        Simbolo s = tabela.buscar(lex);
         if (s == null)
-            erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
+            erro("Identificador '" + lex + "' nao declarado");
 
-        String nome = tokenAtual.getLexema();
+        String nome = lex;
+        String tipoId = s.getTipo();
+
         proximoToken();
 
+        // >>> ajustado: detectar ':' isolado (sdois_pontos) e dar mensagem clara
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
+            erro("Token ':' encontrado apos identificador. Para atribuicao use ':=' (dois caracteres).");
+        }
+
         if (tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
-            if (s.getTipo().equals("procedimento") || s.getTipo().equals("programa"))
-                erro("Nao e possivel atribuir a '" + nome + "' (tipo " + s.getTipo() + ")");
+            if (tipoId.equals("procedimento") || tipoId.equals("programa"))
+                erro("Nao e possivel atribuir a '" + nome + "' (tipo " + tipoId + ")");
             proximoToken();
-            analisaExpressaoComTipo();
+            String tipoExpr = analisaExpressaoComTipo();
+            if (!tipoId.equals(tipoExpr))
+                erro("Incompatibilidade de tipos na atribuicao: '" + nome + "' e do tipo " + tipoId +
+                     ", mas a expressao e do tipo " + tipoExpr);
         } else {
-            // chamada simples de procedimento (sem parenteses)
-            if (!s.getTipo().equals("procedimento"))
+            // caso o token seguinte não seja ':=' => só faz sentido se for chamada de procedimento
+            if (!tipoId.equals("procedimento"))
                 erro("Chamada invalida: '" + nome + "' nao e um procedimento");
+            // se for procedimento, a chamada simples é aceita (sem parâmetros)
         }
     }
 
     private void analisaSe() throws IOException {
         proximoToken();
-        analisaExpressaoComTipo();
+        String tipoExpr = analisaExpressaoComTipo();
+        if (!"booleano".equals(tipoExpr))
+            erro("Expressao do 'se' deve ser booleana");
         if (tokenAtual.getSimbolo() != TokenSimbolo.sentao)
             erro("'entao' esperado");
         proximoToken();
@@ -258,7 +280,9 @@ public class AnalisadorSintatico {
 
     private void analisaEnquanto() throws IOException {
         proximoToken();
-        analisaExpressaoComTipo();
+        String tipoExpr = analisaExpressaoComTipo();
+        if (!"booleano".equals(tipoExpr))
+            erro("Expressao do 'enquanto' deve ser booleana");
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfaca)
             erro("'faca' esperado apos expressao do 'enquanto'");
         proximoToken();
@@ -272,6 +296,13 @@ public class AnalisadorSintatico {
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
             erro("Identificador esperado em 'leia'");
+
+        Simbolo s = tabela.buscar(tokenAtual.getLexema());
+        if (s == null)
+            erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
+        if (!"inteiro".equals(s.getTipo()))
+            erro("Comando 'leia' so pode ser usado com variaveis inteiras");
+
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfecha_parenteses)
             erro("')' esperado apos identificador em 'leia'");
@@ -285,54 +316,114 @@ public class AnalisadorSintatico {
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
             erro("Identificador esperado em 'escreva'");
+
+        Simbolo s = tabela.buscar(tokenAtual.getLexema());
+        if (s == null)
+            erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
+        if (!"inteiro".equals(s.getTipo()))
+            erro("Comando 'escreva' so pode ser usado com variaveis inteiras");
+
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfecha_parenteses)
             erro("')' esperado apos identificador em 'escreva'");
         proximoToken();
     }
 
-    // EXPRESSOES
+    // EXPRESSOES (tipadas)
     private String analisaExpressaoComTipo() throws IOException {
         String tipo1 = analisaExpressaoSimplesComTipo();
         if (tokenAtual.getSimbolo() == TokenSimbolo.sigual || tokenAtual.getSimbolo() == TokenSimbolo.sdiferente ||
             tokenAtual.getSimbolo() == TokenSimbolo.smaior || tokenAtual.getSimbolo() == TokenSimbolo.smenor ||
             tokenAtual.getSimbolo() == TokenSimbolo.smaior_ig || tokenAtual.getSimbolo() == TokenSimbolo.smenor_ig) {
+            TokenSimbolo op = tokenAtual.getSimbolo();
             proximoToken();
-            analisaExpressaoSimplesComTipo();
+            String tipo2 = analisaExpressaoSimplesComTipo();
+            if (!tipo1.equals(tipo2))
+                erro("Incompatibilidade de tipos em comparacao: " + tipo1 + " " + op + " " + tipo2);
             return "booleano";
         }
         return tipo1;
     }
 
     private String analisaExpressaoSimplesComTipo() throws IOException {
-        if (tokenAtual.getSimbolo() == TokenSimbolo.smais || tokenAtual.getSimbolo() == TokenSimbolo.smenos)
+        if (tokenAtual.getSimbolo() == TokenSimbolo.smais || tokenAtual.getSimbolo() == TokenSimbolo.smenos) {
+            TokenSimbolo sinal = tokenAtual.getSimbolo();
             proximoToken();
-        analisaTermoComTipo();
-        while (tokenAtual.getSimbolo() == TokenSimbolo.smais ||
-               tokenAtual.getSimbolo() == TokenSimbolo.smenos ||
-               tokenAtual.getSimbolo() == TokenSimbolo.sou) {
-            proximoToken();
-            analisaTermoComTipo();
+            String tipoDepois = analisaTermoComTipo();
+            if (!"inteiro".equals(tipoDepois))
+                erro("Operador unario '" + (sinal==TokenSimbolo.smais?"+":"-") + "' so pode ser aplicado a inteiros");
+            while (tokenAtual.getSimbolo() == TokenSimbolo.smais ||
+                   tokenAtual.getSimbolo() == TokenSimbolo.smenos ||
+                   tokenAtual.getSimbolo() == TokenSimbolo.sou) {
+                TokenSimbolo op = tokenAtual.getSimbolo();
+                proximoToken();
+                String tipo2 = analisaTermoComTipo();
+                if (op == TokenSimbolo.sou) {
+                    if (!"booleano".equals(tipoDepois) || !"booleano".equals(tipo2))
+                        erro("Operador 'ou' exige operandos booleanos");
+                    tipoDepois = "booleano";
+                } else {
+                    if (!"inteiro".equals(tipoDepois) || !"inteiro".equals(tipo2))
+                        erro("Operacao aritmetica exige operandos inteiros");
+                    tipoDepois = "inteiro";
+                }
+            }
+            return tipoDepois;
+        } else {
+            String tipo = analisaTermoComTipo();
+            while (tokenAtual.getSimbolo() == TokenSimbolo.smais ||
+                   tokenAtual.getSimbolo() == TokenSimbolo.smenos ||
+                   tokenAtual.getSimbolo() == TokenSimbolo.sou) {
+                TokenSimbolo op = tokenAtual.getSimbolo();
+                proximoToken();
+                String tipo2 = analisaTermoComTipo();
+                if (op == TokenSimbolo.sou) {
+                    if (!"booleano".equals(tipo) || !"booleano".equals(tipo2))
+                        erro("Operador 'ou' exige operandos booleanos");
+                    tipo = "booleano";
+                } else {
+                    if (!"inteiro".equals(tipo) || !"inteiro".equals(tipo2))
+                        erro("Operacao aritmetica exige operandos inteiros");
+                    tipo = "inteiro";
+                }
+            }
+            return tipo;
         }
-        return "inteiro"; // simplificado
     }
 
     private String analisaTermoComTipo() throws IOException {
-        analisaFatorComTipo();
+        String tipo = analisaFatorComTipo();
         while (tokenAtual.getSimbolo() == TokenSimbolo.smultiplicacao ||
                tokenAtual.getSimbolo() == TokenSimbolo.sdiv ||
                tokenAtual.getSimbolo() == TokenSimbolo.se) {
+            TokenSimbolo op = tokenAtual.getSimbolo();
             proximoToken();
-            analisaFatorComTipo();
+            String tipo2 = analisaFatorComTipo();
+            if (op == TokenSimbolo.se) {
+                if (!"booleano".equals(tipo) || !"booleano".equals(tipo2))
+                    erro("Operador 'e' exige operandos booleanos");
+                tipo = "booleano";
+            } else {
+                if (!"inteiro".equals(tipo) || !"inteiro".equals(tipo2))
+                    erro("Operacao aritmetica exige operandos inteiros");
+                tipo = "inteiro";
+            }
         }
-        return "inteiro";
+        return tipo;
     }
 
     private String analisaFatorComTipo() throws IOException {
         switch (tokenAtual.getSimbolo()) {
             case sidentificador:
+                String nome = tokenAtual.getLexema();
+                Simbolo s = tabela.buscar(nome);
+                if (s == null)
+                    erro("Identificador '" + nome + "' nao declarado");
+                String tipo = s.getTipo();
+                if ("procedimento".equals(tipo) || "programa".equals(tipo))
+                    erro("Identificador '" + nome + "' do tipo '" + tipo + "' nao pode ser usado em expressao");
                 proximoToken();
-                return "inteiro";
+                return tipo;
             case snumero:
                 proximoToken();
                 return "inteiro";
@@ -340,24 +431,34 @@ public class AnalisadorSintatico {
             case sfalso:
                 proximoToken();
                 return "booleano";
+            case smais:
+            case smenos:
+                TokenSimbolo op = tokenAtual.getSimbolo();
+                proximoToken();
+                String t = analisaFatorComTipo();
+                if (!"inteiro".equals(t))
+                    erro("Operador unario '" + (op==TokenSimbolo.smais?"+":"-") + "' so pode ser aplicado a inteiros");
+                return "inteiro";
             case snao:
                 proximoToken();
-                analisaFatorComTipo();
+                String t2 = analisaFatorComTipo();
+                if (!"booleano".equals(t2))
+                    erro("Operador 'nao' so pode ser aplicado a expressoes booleanas");
                 return "booleano";
             case sabre_parenteses:
                 proximoToken();
-                analisaExpressaoComTipo();
+                String tipoExpr = analisaExpressaoComTipo();
                 if (tokenAtual.getSimbolo() != TokenSimbolo.sfecha_parenteses)
                     erro("')' esperado");
                 proximoToken();
-                return "inteiro";
+                return tipoExpr;
             default:
                 erro("Fator invalido");
                 return null;
         }
     }
 
-
+    // métodos sintáticos não tipados (mantidos como fallback)
     private void analisaExpressao() throws IOException {
         analisaExpressaoSimples();
         if (tokenAtual.getSimbolo() == TokenSimbolo.smaior || tokenAtual.getSimbolo() == TokenSimbolo.smaior_ig ||
@@ -392,6 +493,9 @@ public class AnalisadorSintatico {
     private void analisaFator() throws IOException {
         if (tokenAtual.getSimbolo() == TokenSimbolo.sidentificador) {
             if (tabela.buscar(tokenAtual.getLexema()) != null) {
+                Simbolo s = tabela.buscar(tokenAtual.getLexema());
+                if ("procedimento".equals(s.getTipo()) || "programa".equals(s.getTipo()))
+                    erro("Identificador '" + tokenAtual.getLexema() + "' do tipo '" + s.getTipo() + "' nao pode ser usado aqui");
                 proximoToken();
             } else {
                 erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
@@ -415,5 +519,4 @@ public class AnalisadorSintatico {
             erro("Fator invalido");
         }
     }
-
 }
