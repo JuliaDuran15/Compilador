@@ -20,6 +20,10 @@ class Simbolo {
     public void setTipo(String tipo) { this.tipo = tipo; }
     public int getEndereco() { return endereco; }
 
+    public void setEndereco(int endereco) {
+        this.endereco = endereco;
+    }
+
     @Override
     public String toString() {
         return "Simbolo{" +
@@ -106,6 +110,8 @@ public class TabelaSimbolos {
     public int getNivelAtual() {
         return nivelAtual;
     }
+
+
 
     // ==========================
     // DEPURAÇÃO / UTILITÁRIOS

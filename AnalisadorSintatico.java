@@ -6,6 +6,12 @@ public class AnalisadorSintatico {
     private Token tokenAtual;
     private TabelaSimbolos tabela;
     private AnalisadorLexico lexico;
+    private GeradorCodigo gc = new GeradorCodigo();
+    private int rotulo = 1;   // rótulos L1, L2, L3...
+
+    private String novoRotulo() {
+        return "L" + (rotulo++);
+    }
 
     public AnalisadorSintatico(AnalisadorLexico lexico, TabelaSimbolos tabela) throws IOException {
         this.lexico = lexico;
@@ -28,6 +34,8 @@ public class AnalisadorSintatico {
     public void analisaPrograma() throws IOException {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sprograma)
             erro("Palavra-chave 'programa' esperada");
+        
+            gc.gera("", "START", "", "");
 
         proximoToken();
 
@@ -50,19 +58,39 @@ public class AnalisadorSintatico {
             erro("Ponto e virgula nao permitido apos 'fim' do programa principal");
 
         if (tokenAtual.getSimbolo() == TokenSimbolo.sponto) {
+            //// >>> ALTERAÇÃO: gerar HLT
+            gc.gera("", "HLT", "", "");
+
             proximoToken();
             System.out.println("Programa valido!");
+            salvarCodigoGeradoEmArquivo();
+
         } else {
             erro("Ponto final esperado apos 'fim' do programa principal");
         }
     }
 
     private void analisaBloco() throws IOException {
+        int inicioEscopo = tabela.getNivelAtual();
+        int enderecoAntes = tabela.getTodos().size();
+        
         tabela.entrarEscopo();
         analisaEtVariaveis();
+
+            //// >>> ALTERAÇÃO: ALLOC (variáveis do escopo)
+        int depois = tabela.getTodos().size();
+        int nVars = depois - enderecoAntes;
+        if (nVars > 0)
+            gc.gera("", "ALLOC", enderecoAntes + "", nVars + "");
+            
         analisaSubrotinas();
         analisaComandos();
-        tabela.sairEscopo();
+
+            //// >>> ALTERAÇÃO: desalocar variáveis locais
+        if (nVars > 0)
+            gc.gera("", "DALLOC", enderecoAntes + "", nVars + "");
+        
+            tabela.sairEscopo();
     }
 
     private void analisaEtVariaveis() throws IOException {
@@ -124,6 +152,21 @@ public class AnalisadorSintatico {
     }
 
     private void analisaSubrotinas() throws IOException {
+        int flag = 0;
+        String auxrot = null;
+        
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sprocedimento ||
+            tokenAtual.getSimbolo() == TokenSimbolo.sfuncao) {
+
+            auxrot = novoRotulo();
+
+            // GERA("", JMP, auxrot, "")
+            gc.gera("", "JMP", auxrot, "");
+
+            flag = 1;
+        }
+
+
         while (tokenAtual.getSimbolo() == TokenSimbolo.sprocedimento || tokenAtual.getSimbolo() == TokenSimbolo.sfuncao) {
             if (tokenAtual.getSimbolo() == TokenSimbolo.sprocedimento)
                 analisaDeclaracaoProcedimento();
@@ -133,6 +176,11 @@ public class AnalisadorSintatico {
             if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
                 erro("Ponto e virgula esperado apos declaracao de sub-rotina");
             proximoToken();
+        }
+
+        if (flag == 1) {
+         // início do principal → Lx: NULL
+            gc.gera(auxrot, "NULL", "", "");
         }
     }
 
@@ -145,9 +193,17 @@ public class AnalisadorSintatico {
 
         if (tabela.buscar(nome) != null)
             erro("Procedimento '" + nome + "' ja declarado (identificador visivel com mesmo nome)");
+        
+        int rot = rotulo++;
+
         if (!tabela.inserir(nome, tabela.getNivelAtual(), "procedimento"))
             erro("Nao foi possivel inserir procedimento '" + nome + "'");
 
+        Simbolo s = tabela.buscar(nome);
+        s.setEndereco(rot);
+
+        // gera rótulo da subrotina
+        gc.gera("L" + rot, "NULL", "", "");
         proximoToken();
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
@@ -155,9 +211,14 @@ public class AnalisadorSintatico {
 
         proximoToken();
         analisaBloco();
+
+        //// >>> ALTERAÇÃO: fim de procedimento
+        gc.gera("", "RETURN", "", "");
     }
 
     private void analisaDeclaracaoFuncao() throws IOException {
+
+        // consome 'funcao'
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
             erro("Identificador esperado apos 'funcao'");
@@ -165,25 +226,73 @@ public class AnalisadorSintatico {
         String nome = tokenAtual.getLexema();
 
         if (tabela.buscar(nome) != null)
-            erro("Funcao '" + nome + "' ja declarada (identificador visivel com mesmo nome)");
+            erro("Funcao '" + nome + "' já declarada");
 
+        // consome nome
         proximoToken();
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sdois_pontos)
             erro("':' esperado apos nome da funcao");
 
+        // consome ':'
         proximoToken();
-        String tipo = analisaTipo();
 
-        if (!tabela.inserir(nome, tabela.getNivelAtual(), tipo))
+        // -----------------------------
+        // Determinação do tipo da função
+        // -----------------------------
+        String tipoFuncao;
+
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sinteiro) {
+            tipoFuncao = "funcao_inteiro";
+        }
+        else if (tokenAtual.getSimbolo() == TokenSimbolo.sbooleano) {
+            tipoFuncao = "funcao_booleano";
+        }
+        else {
+            erro("Tipo invalido de retorno na funcao");
+            return; // apenas para evitar warning
+        }
+
+        // consome tipo
+        proximoToken();
+
+        // cria rótulo (Lx)
+        String rotuloFuncao = novoRotulo();
+
+        // insere símbolo
+        if (!tabela.inserir(nome, tabela.getNivelAtual(), tipoFuncao))
             erro("Nao foi possivel inserir funcao '" + nome + "'");
 
-        if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
-            erro("Ponto e virgula esperado apos tipo da funcao");
+        // salva destino do CALL
+        tabela.buscar(nome).setEndereco(Integer.parseInt(rotuloFuncao.substring(1)));
 
+        if (tokenAtual.getSimbolo() != TokenSimbolo.sponto_virgula)
+            erro("Ponto e virgula esperado apos declaracao da funcao");
+
+        // consome ';'
         proximoToken();
-        analisaBloco();
+
+        //-------------------------------
+        // Rótulo da função
+        //-------------------------------
+        gc.gera(rotuloFuncao, "NULL", "", "");
+
+        //-------------------------------
+        // Bloco da função
+        //-------------------------------
+        analisaBloco();  // já faz ALLOC/DALLOC automaticamente
+
+        //-------------------------------
+        // Salva retorno da função em M[0]
+        //-------------------------------
+        gc.gera("", "STR", "0", "");
+
+        //-------------------------------
+        // Return da função
+        //-------------------------------
+        gc.gera("", "RETURN", "", "");
     }
+
 
     private void analisaComandos() throws IOException {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sinicio)
@@ -232,36 +341,61 @@ public class AnalisadorSintatico {
 
     // <atribuição_chprocedimento> ::= <identificador> := <expressao> | <identificador>
     private void analisaAtribOuChamada() throws IOException {
+
         String lex = tokenAtual.getLexema();
         Simbolo s = tabela.buscar(lex);
+
         if (s == null)
             erro("Identificador '" + lex + "' nao declarado");
 
-        String nome = lex;
-        String tipoId = s.getTipo();
+        String tipo = s.getTipo();
+        int rot = s.getEndereco();     // para funções/procedimentos
 
         proximoToken();
 
-        // >>> ajustado: detectar ':' isolado (sdois_pontos) e dar mensagem clara
-        if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos) {
-            erro("Token ':' encontrado apos identificador. Para atribuicao use ':=' (dois caracteres).");
-        }
+        if (tokenAtual.getSimbolo() == TokenSimbolo.sdois_pontos)
+            erro("Use ':=' para atribuicao. ':' isolado e invalido.");
 
+        // ------------------------------
+        // ATRIBUIÇÃO
+        // ------------------------------
         if (tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
-            if (tipoId.equals("procedimento") || tipoId.equals("programa"))
-                erro("Nao e possivel atribuir a '" + nome + "' (tipo " + tipoId + ")");
+
+            if (!tipo.equals("inteiro") && !tipo.equals("booleano"))
+                erro("Atribuicao somente para variaveis.");
+
             proximoToken();
             String tipoExpr = analisaExpressaoComTipo();
-            if (!tipoId.equals(tipoExpr))
-                erro("Incompatibilidade de tipos na atribuicao: '" + nome + "' e do tipo " + tipoId +
-                     ", mas a expressao e do tipo " + tipoExpr);
-        } else {
-            // caso o token seguinte não seja ':=' => só faz sentido se for chamada de procedimento
-            if (!tipoId.equals("procedimento"))
-                erro("Chamada invalida: '" + nome + "' nao e um procedimento");
-            // se for procedimento, a chamada simples é aceita (sem parâmetros)
+
+            if (!tipo.equals(tipoExpr))
+                erro("Tipos incompativeis na atribuicao.");
+
+            gc.gera("", "STR", s.getEndereco()+"", "");
+            return;
         }
+
+        // ------------------------------
+        // CHAMADA DE PROCEDIMENTO
+        // ------------------------------
+        if (tipo.equals("procedimento")) {
+            gc.gera("", "CALL", "L" + rot, "");
+            return;
+        }
+
+        // ------------------------------
+        // CHAMADA DE FUNÇÃO COMO COMANDO
+        // ------------------------------
+        if (tipo.equals("funcao_inteiro") || tipo.equals("funcao_booleano")) {
+            gc.gera("", "CALL", "L" + rot, "");
+            return;  // valor fica em M[0]
+        }
+
+        // ------------------------------
+        // VARIÁVEL SOZINHA → ERRO
+        // ------------------------------
+        erro("Variavel '" + lex + "' usada como comando. Faltou ':='?");
     }
+
 
     private void analisaSe() throws IOException {
         proximoToken();
@@ -271,22 +405,56 @@ public class AnalisadorSintatico {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sentao)
             erro("'entao' esperado");
         proximoToken();
+
+        String Lelse = novoRotulo();
+        String Lfim = novoRotulo();
+
+        //// >>> ALTERAÇÃO: se falso vai para Lelse
+        gc.gera("", "JMPF", Lelse, "");
+        //// >>> FIM ALTERAÇÃO
+
         analisaComando();
         if (tokenAtual.getSimbolo() == TokenSimbolo.ssenao) {
             proximoToken();
+
+            //// >>> ALTERAÇÃO: depois do então, pula Lfim
+            gc.gera("", "JMP", Lfim, "");
+            gc.gera(Lelse, "NULL", "", "");
+
             analisaComando();
+
+             gc.gera(Lfim, "NULL", "", "");
+
+        } else {
+            gc.gera(Lelse, "NULL", "", "");
         }
     }
 
     private void analisaEnquanto() throws IOException {
+
+          //// >>> ALTERAÇÃO MVD
+        String L1 = novoRotulo();
+        gc.gera(L1, "NULL", "", "");
+        
         proximoToken();
         String tipoExpr = analisaExpressaoComTipo();
         if (!"booleano".equals(tipoExpr))
             erro("Expressao do 'enquanto' deve ser booleana");
+        
+        String L2 = novoRotulo();
+        //// >>> ALTERAÇÃO: desvio se falso
+        gc.gera("", "JMPF", L2, "");
+
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfaca)
             erro("'faca' esperado apos expressao do 'enquanto'");
         proximoToken();
         analisaComando();
+
+        //// >>> ALTERAÇÃO: volta para o início
+        gc.gera("", "JMP", L1, "");
+
+        //// >>> ALTERAÇÃO: fim do while
+        gc.gera(L2, "NULL", "", "");
     }
 
     private void analisaLeia() throws IOException {
@@ -302,6 +470,10 @@ public class AnalisadorSintatico {
             erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
         if (!"inteiro".equals(s.getTipo()))
             erro("Comando 'leia' so pode ser usado com variaveis inteiras");
+
+            //// >>> GERAR RD + STR
+        gc.gera("", "RD", "", "");
+        gc.gera("", "STR", s.getEndereco()+"", "");
 
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfecha_parenteses)
@@ -322,7 +494,9 @@ public class AnalisadorSintatico {
             erro("Identificador '" + tokenAtual.getLexema() + "' nao declarado");
         if (!"inteiro".equals(s.getTipo()))
             erro("Comando 'escreva' so pode ser usado com variaveis inteiras");
-
+        //// >>> GERAR LDV + PRN
+        gc.gera("", "LDV", s.getEndereco()+"", "");
+        gc.gera("", "PRN", "", "");
         proximoToken();
         if (tokenAtual.getSimbolo() != TokenSimbolo.sfecha_parenteses)
             erro("')' esperado apos identificador em 'escreva'");
@@ -340,6 +514,8 @@ public class AnalisadorSintatico {
             String tipo2 = analisaExpressaoSimplesComTipo();
             if (!tipo1.equals(tipo2))
                 erro("Incompatibilidade de tipos em comparacao: " + tipo1 + " " + op + " " + tipo2);
+            
+            geraOperadorMVD(op);         
             return "booleano";
         }
         return tipo1;
@@ -361,10 +537,13 @@ public class AnalisadorSintatico {
                 if (op == TokenSimbolo.sou) {
                     if (!"booleano".equals(tipoDepois) || !"booleano".equals(tipo2))
                         erro("Operador 'ou' exige operandos booleanos");
+                    geraOperadorMVD(op);            
                     tipoDepois = "booleano";
                 } else {
                     if (!"inteiro".equals(tipoDepois) || !"inteiro".equals(tipo2))
                         erro("Operacao aritmetica exige operandos inteiros");
+                    
+                    geraOperadorMVD(op);            
                     tipoDepois = "inteiro";
                 }
             }
@@ -402,10 +581,13 @@ public class AnalisadorSintatico {
             if (op == TokenSimbolo.se) {
                 if (!"booleano".equals(tipo) || !"booleano".equals(tipo2))
                     erro("Operador 'e' exige operandos booleanos");
+                geraOperadorMVD(op);
                 tipo = "booleano";
             } else {
                 if (!"inteiro".equals(tipo) || !"inteiro".equals(tipo2))
                     erro("Operacao aritmetica exige operandos inteiros");
+            
+                geraOperadorMVD(op);    
                 tipo = "inteiro";
             }
         }
@@ -414,21 +596,71 @@ public class AnalisadorSintatico {
 
     private String analisaFatorComTipo() throws IOException {
         switch (tokenAtual.getSimbolo()) {
-            case sidentificador:
-                String nome = tokenAtual.getLexema();
-                Simbolo s = tabela.buscar(nome);
-                if (s == null)
-                    erro("Identificador '" + nome + "' nao declarado");
-                String tipo = s.getTipo();
-                if ("procedimento".equals(tipo) || "programa".equals(tipo))
-                    erro("Identificador '" + nome + "' do tipo '" + tipo + "' nao pode ser usado em expressao");
+        case sidentificador: {
+
+            String nome = tokenAtual.getLexema();
+            Simbolo s = tabela.buscar(nome);
+
+            if (s == null)
+                erro("Identificador '" + nome + "' nao declarado");
+
+            String tipo = s.getTipo();
+            int rotuloOuEndereco = s.getEndereco();  // vale para variável ou função
+
+            // ------------------------------------------
+            // VARIÁVEL (inteiro ou booleano)
+            // ------------------------------------------
+            if (tipo.equals("inteiro") || tipo.equals("booleano")) {
+
+                gc.gera("", "LDV", rotuloOuEndereco + "", "");  // carrega variável
                 proximoToken();
                 return tipo;
+            }
+
+            // ------------------------------------------
+            // FUNÇÃO (funcao_inteiro / funcao_booleano)
+            // ------------------------------------------
+            if (tipo.equals("funcao_inteiro") || tipo.equals("funcao_booleano")) {
+
+                int rot = rotuloOuEndereco;  // aqui é o número do rótulo Lx
+
+                proximoToken();
+
+                gc.gera("", "CALL", "L" + rot, "");  // chama função
+                gc.gera("", "LDV", "0", "");         // pega retorno da função
+
+                return tipo.equals("funcao_inteiro") ? "inteiro" : "booleano";
+            }
+
+            // ------------------------------------------
+            // ERRO: procedimento não pode ser fator
+            // ------------------------------------------
+            if (tipo.equals("procedimento"))
+                erro("Procedimento '" + nome + "' nao pode ser usado em expressao");
+
+            // ------------------------------------------
+            // ERRO: programa nunca pode ser usado
+            // ------------------------------------------
+            if (tipo.equals("programa"))
+                erro("Programa nao pode ser usado em expressao");
+
+            // ------------------------------------------
+            // Tipo desconhecido
+            // ------------------------------------------
+            erro("Identificador '" + nome + "' com tipo invalido: " + tipo);
+        }
+
+
             case snumero:
+                gc.gera("", "LDC", tokenAtual.getLexema(), "");
                 proximoToken();
                 return "inteiro";
             case sverdadeiro:
+                gc.gera("", "LDC", "1", "");
+                proximoToken();
+                return "booleano";
             case sfalso:
+                gc.gera("", "LDC", "0", "");
                 proximoToken();
                 return "booleano";
             case smais:
@@ -438,12 +670,16 @@ public class AnalisadorSintatico {
                 String t = analisaFatorComTipo();
                 if (!"inteiro".equals(t))
                     erro("Operador unario '" + (op==TokenSimbolo.smais?"+":"-") + "' so pode ser aplicado a inteiros");
+                if (op == TokenSimbolo.smenos)
+                    gc.gera("", "INV", "", "");
+                
                 return "inteiro";
             case snao:
                 proximoToken();
                 String t2 = analisaFatorComTipo();
                 if (!"booleano".equals(t2))
                     erro("Operador 'nao' so pode ser aplicado a expressoes booleanas");
+                gc.gera("", "NEG", "", "");
                 return "booleano";
             case sabre_parenteses:
                 proximoToken();
@@ -519,4 +755,77 @@ public class AnalisadorSintatico {
             erro("Fator invalido");
         }
     }
+
+        //// >>> NOVA FUNÇÃO: geração de operadores da MVD
+    private void geraOperadorMVD(TokenSimbolo op) {
+
+        switch (op) {
+
+            case smais:
+                gc.gera("", "ADD", "", "");
+                break;
+
+            case smenos:
+                gc.gera("", "SUB", "", "");
+                break;
+
+            case smultiplicacao:
+                gc.gera("", "MULT", "", "");
+                break;
+
+            case sdiv:
+                gc.gera("", "DIVI", "", "");
+                break;
+
+            case se:       // lógico E
+                gc.gera("", "AND", "", "");
+                break;
+
+            case sou:      // lógico OU
+                gc.gera("", "OR", "", "");
+                break;
+
+            case smaior:
+                gc.gera("", "CMA", "", "");
+                break;
+
+            case smenor:
+                gc.gera("", "CME", "", "");
+                break;
+
+            case smaior_ig:
+                gc.gera("", "CMAQ", "", "");
+                break;
+
+            case smenor_ig:
+                gc.gera("", "CMEQ", "", "");
+                break;
+
+            case sigual:
+                gc.gera("", "CEQ", "", "");
+                break;
+
+            case sdiferente:
+                gc.gera("", "CDIF", "", "");
+                break;
+        }
+    }
+        //// >>> FIM NOVA FUNÇÃO
+    private void salvarCodigoGeradoEmArquivo() {
+        try {
+            java.io.PrintWriter writer =
+                new java.io.PrintWriter("codigo_mvd.txt", "UTF-8");
+
+            for (String linha : gc.getCodigo()) {
+                writer.println(linha);
+            }
+
+            writer.close();
+            System.out.println("Arquivo 'codigo_mvd.txt' gerado com sucesso!");
+
+        } catch (Exception e) {
+            System.out.println("Erro ao salvar arquivo de código: " + e.getMessage());
+        }
+    }
+
 }
