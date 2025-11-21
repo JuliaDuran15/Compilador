@@ -842,14 +842,14 @@ public class AnalisadorSintatico {
     private void salvarCodigoGeradoEmArquivo() {
         try {
             java.io.PrintWriter writer =
-                new java.io.PrintWriter("codigo_mvd.txt", "UTF-8");
+                new java.io.PrintWriter("codigo_mvd.obj", "UTF-8");
 
             for (String linha : gc.getCodigo()) {
                 writer.println(linha);
             }
 
             writer.close();
-            System.out.println("Arquivo 'codigo_mvd.txt' gerado com sucesso!");
+            System.out.println("Arquivo 'codigo_mvd.obj' gerado com sucesso!");
 
         } catch (Exception e) {
             System.out.println("Erro ao salvar arquivo de código: " + e.getMessage());
