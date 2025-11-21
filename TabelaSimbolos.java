@@ -58,7 +58,17 @@ public class TabelaSimbolos {
             return false;
         }
 
-        Simbolo simbolo = new Simbolo(nome, escopo, tipo, enderecoAtual++);
+        int endereco;
+        if (tipo.equals("inteiro") || tipo.equals("booleano")) {
+            // Variável → recebe endereço e incrementa contador
+            endereco = enderecoAtual++;
+        } else {
+            // Programa, procedimento, função → endereço especial (-1 ou 0)
+            // O endereço será definido depois (para funções/procedimentos é o rótulo)
+            endereco = -1;
+        }
+
+        Simbolo simbolo = new Simbolo(nome, escopo, tipo, endereco);
         tabela.add(simbolo);
         System.out.println("SUCESSO: " + nome + " inserido no escopo " + escopo);
         return true;
@@ -111,7 +121,13 @@ public class TabelaSimbolos {
         return nivelAtual;
     }
 
+    public int getEnderecoAtual() {
+        return enderecoAtual;
+    }
 
+    public void setEnderecoInicial(int endereco) {
+        this.enderecoAtual = endereco;
+    }
 
     // ==========================
     // DEPURAÇÃO / UTILITÁRIOS

@@ -39,8 +39,13 @@ public class AnalisadorSintatico {
         if (tokenAtual.getSimbolo() != TokenSimbolo.sprograma)
             erro("Palavra-chave 'programa' esperada");
         
-            gc.gera("", "START", "", "");
+        gc.gera("", "START", "", "");
 
+        // reservar slot 0 do programa (retorno de função)
+        gc.gera("", "ALLOC", "0", "1");
+
+        // Garante que as variáveis globais comecem em 1 (slot 0 não é gerenciado pela tabela, mas ocupa memória)
+        tabela.setEnderecoInicial(1);
         proximoToken();
 
         if (tokenAtual.getSimbolo() != TokenSimbolo.sidentificador)
@@ -62,7 +67,9 @@ public class AnalisadorSintatico {
             erro("Ponto e virgula nao permitido apos 'fim' do programa principal");
 
         if (tokenAtual.getSimbolo() == TokenSimbolo.sponto) {
-            //// >>> ALTERAÇÃO: gerar HLT
+            // Libera slot 0 do programa (retorno de função)
+            gc.gera("", "DALLOC", "0", "1");
+
             gc.gera("", "HLT", "", "");
 
             proximoToken();
@@ -76,13 +83,13 @@ public class AnalisadorSintatico {
 
     private void analisaBloco() throws IOException {
         int inicioEscopo = tabela.getNivelAtual();
-        int enderecoAntes = tabela.getTodos().size();
+        int enderecoAntes = tabela.getEnderecoAtual();
         
         tabela.entrarEscopo();
         analisaEtVariaveis();
 
             //// >>> ALTERAÇÃO: ALLOC (variáveis do escopo)
-        int depois = tabela.getTodos().size();
+        int depois = tabela.getEnderecoAtual();
         int nVars = depois - enderecoAntes;
         if (nVars > 0)
             gc.gera("", "ALLOC", enderecoAntes + "", nVars + "");
@@ -287,11 +294,6 @@ public class AnalisadorSintatico {
         analisaBloco();  // já faz ALLOC/DALLOC automaticamente
 
         //-------------------------------
-        // Salva retorno da função em M[0]
-        //-------------------------------
-        gc.gera("", "STR", "0", "");
-
-        //-------------------------------
         // Return da função
         //-------------------------------
         gc.gera("", "RETURN", "", "");
@@ -366,8 +368,8 @@ public class AnalisadorSintatico {
         // ------------------------------
         if (tokenAtual.getSimbolo() == TokenSimbolo.satribuicao) {
 
-            if (!tipo.equals("inteiro") && !tipo.equals("booleano"))
-                erro("Atribuicao somente para variaveis.");
+            if (!tipo.equals("inteiro") && !tipo.equals("booleano") && !tipo.equals("funcao_inteiro") && !tipo.equals("funcao_booleano"))
+                erro("Atribuicao somente para variaveis ou funcoes.");
 
             proximoToken();
 
@@ -377,16 +379,20 @@ public class AnalisadorSintatico {
 
             String tipoExpr = analisaExpressaoComTipo();
 
-            if (!tipo.equals(tipoExpr))
+            String tipoEsperado = tipo;
+            if (tipo.equals("funcao_inteiro")) tipoEsperado = "inteiro";
+            if (tipo.equals("funcao_booleano")) tipoEsperado = "booleano";
+
+            if (!tipoEsperado.equals(tipoExpr))
                 erro("Tipos incompativeis na atribuicao.");
 
-
-            // NOVO — gerar pos-fixa
-            // converteExpressaoParaPosFixa();
             geraCodigoPosFixa();
 
-            
-            gc.gera("", "STR", s.getEndereco()+"", "");
+            if (tipo.startsWith("funcao")) {
+                gc.gera("", "STR", "0", "");  // Funções retornam em M[0]
+            } else {
+                gc.gera("", "STR", s.getEndereco()+"", "");
+            }
             return;
         }
 
